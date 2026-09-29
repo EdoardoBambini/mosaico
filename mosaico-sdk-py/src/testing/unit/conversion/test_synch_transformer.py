@@ -154,8 +154,8 @@ def test_sync_transformer_reset():
     df = pd.DataFrame({"timestamp_ns": [0, 100_000_000], "val": [1, 2]})
 
     transformer.fit(df).transform(df)
-    assert transformer._next_timestamp_ns is not None
+    assert transformer._origin_ns is not None
 
     transformer.reset()
-    assert transformer._next_timestamp_ns is None
+    assert transformer._origin_ns is None
     assert len(transformer._last_values) == 0
