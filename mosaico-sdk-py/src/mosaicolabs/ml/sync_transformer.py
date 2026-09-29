@@ -52,7 +52,6 @@ class SyncTransformer(BaseEstimator, TransformerMixin):
             policy (SyncPolicy): A strategy implementing the `SyncPolicy` protocol.
             timestamp_column (str): The column name containing the timestamp data.
         """
-        self._step_ns: int = int(1e9 / target_fps)
         self._period_ns: float = 1e9 / float(str(target_fps))
         self._policy: SyncPolicy = policy
         self._timestamp_column: str = timestamp_column
@@ -186,11 +185,12 @@ class SyncTransformer(BaseEstimator, TransformerMixin):
         chunk_end_ns = int(X_tstamp.iloc[-1])
 
         # We start exactly from the next expected tick to prevent drift
-        t0 = self._origin_ns
         grid = np.arange(
-            self._tick, (chunk_end_ns - t0 + 0.5) / self._period_ns, dtype=np.int64
+            self._tick,
+            (chunk_end_ns - self._origin_ns + 0.5) / self._period_ns,
+            dtype=np.int64,
         )
-        grid = t0 + np.floor(grid * self._period_ns + 0.5).astype(np.int64)
+        grid = self._origin_ns + np.floor(grid * self._period_ns + 0.5).astype(np.int64)
 
         # Advance the pointer for the next chunk
         if len(grid) > 0:
