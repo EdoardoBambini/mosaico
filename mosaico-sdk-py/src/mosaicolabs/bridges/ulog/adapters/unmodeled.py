@@ -7,6 +7,7 @@ from typing import Any, Dict, Type, TypeVar
 
 import pyarrow as pa
 
+from mosaicolabs.models.core import Message
 from mosaicolabs.models.core.unmodeled import Unmodeled
 
 from ..adapter_base import ULogAdapterBase
@@ -36,6 +37,15 @@ class UnmodeledAdapter(ULogAdapterBase[UnmodeledT]):
         if msg.data is None:
             raise ValueError(f"No data for topic '{msg.topic_name}'.")
         return msg.data
+
+    @classmethod
+    def to_native(cls, mosaico_data: Message, **kwargs: Any) -> dict:
+        """
+        Rebuilds the native ULog record of a message: the nested payload plus the top-level
+        `timestamp` in us (exact, since the ingestion multiplied it by 1000).
+        """
+        data, _ = cls.unpack_mosaico_msg(mosaico_data)
+        return {"timestamp": mosaico_data.timestamp_ns // 1000, **data.raw_data}
 
     @classmethod
     def get_or_create(cls, ontology_type: Type[UnmodeledT]) -> Type["UnmodeledAdapter"]:

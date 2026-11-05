@@ -14,6 +14,9 @@ here one yielded item is one whole topic, already converted into an Arrow
          -> _valid_rows       (timestamp policy)
          -> _to_arrow_arrays  (flat columns -> nested Arrow arrays)
          -> RecordBatch       (timestamp_ns + payload)  -> ULogInjector
+
+`MosaicoToULogLoader` is the opposite direction: it streams a Mosaico sequence for the
+extraction to `.ulg`, as `MosaicoToMCAPLoader` does for MCAP.
 """
 
 from pathlib import Path
@@ -23,13 +26,14 @@ import numpy as np
 import pyarrow as pa
 from pyulog import ULog
 
+from mosaicolabs import TopicHandler
 from mosaicolabs.enum.serialization_format import SerializationFormat
 from mosaicolabs.logging_config import get_logger
 from mosaicolabs.models.core import Message
 from mosaicolabs.models.core.helpers import resolve_ontology_class
 
 from ..helpers import _filter_from_list
-from ..loader_base import BaseLoader
+from ..loader_base import BaseLoader, MosaicoLoader, TopicResolution
 from ..protocols.ulog.converter import ULogSchemaConverter
 from ..topic_status import TopicStatus
 from .adapter_base import ULogAdapterBase, ULogSchemaMetadata
@@ -356,3 +360,59 @@ class ULogLoader(BaseLoader[ULogAdapterBase]):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
+class MosaicoToULogLoader(MosaicoLoader[ULogAdapterBase]):
+    """
+    Streams messages out of a Mosaico sequence for the extraction to `.ulg`.
+
+    The mirror image of `ULogLoader`, with the same role as `MosaicoToMCAPLoader`
+    (bridges/mcap/loader.py): the sequence handling comes from `MosaicoLoader`, the only
+    ULog-specific parts are the `_ulog_` metadata and the adapter resolution.
+    """
+
+    SCHEMA_METADATA = ULogSchemaMetadata
+    """Topics ingested by the ULog bridge carry their bookkeeping under the `_ulog_` key."""
+
+    def _resolve_topic(
+        self, t_handler: TopicHandler
+    ) -> TopicResolution[ULogAdapterBase]:
+        """
+        Resolves the adapter of a topic from its `_ulog_` metadata.
+
+        Same two strategies as `MosaicoToMCAPLoader._resolve_topic`: a hand-written adapter
+        from the bridge registry first, otherwise an `UnmodeledAdapter` for the ontology
+        stored on the server.
+
+        Args:
+            t_handler (TopicHandler): The topic handler to resolve.
+
+        Returns:
+            TopicResolution[ULogAdapterBase]: The adapter and the ULog format name, or a
+                `TopicStatus.MALFORMED_METADATA` rejection if `_ulog_` is missing or invalid.
+        """
+        try:
+            metadata = ULogSchemaMetadata.from_dict(t_handler.user_metadata)
+        except (TypeError, ValueError) as e:
+            return TopicResolution.rejected(TopicStatus.MALFORMED_METADATA, str(e))
+
+        message_name = metadata.fields["message_name"]
+        adapter = ULogBridge.get_default_adapter(
+            message_name
+        ) or UnmodeledAdapter.get_or_create(
+            resolve_ontology_class(
+                ontology_tag=t_handler.ontology_tag,
+                schema=t_handler.ontology_schema,
+                serialization_format=SerializationFormat(
+                    t_handler.serialization_format
+                ),
+            )
+        )
+        return TopicResolution.accepted(adapter, message_name)
+
+    def sequence_metadata(self) -> dict:
+        """
+        Returns the sequence metadata, where the ingestion stored the file-level ULog
+        records (see `ULogLoader.sequence_metadata`).
+        """
+        return self._resolve_sequence().user_metadata

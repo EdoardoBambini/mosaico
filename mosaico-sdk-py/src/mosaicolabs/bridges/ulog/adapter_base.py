@@ -61,13 +61,10 @@ class ULogAdapterBase(BridgeAdapterBase[OntologyT, dict]):
     def translate(cls, msg: ULogMessage, **kwargs: Any) -> pa.RecordBatch:
         """Translates the topic rows in `msg.data` into the ontology schema."""
 
-    # Required by BridgeAdapterBase; it will be implemented with the extraction
-    # (Mosaico -> .ulg), which is out of scope for now
+    # Required by BridgeAdapterBase: Message -> native ULog record, used by the extraction
     @classmethod
     def to_native(cls, mosaico_data, **kwargs) -> dict:
-        raise NotImplementedError(
-            f"{cls.__name__}: Mosaico -> ULog is not supported yet."
-        )
+        raise NotImplementedError(f"{cls.__name__} does not implement to_native().")
 
     # Same as MCAPAdapterBase.ontology_data_type: the class passed to topic_create
     @classmethod
